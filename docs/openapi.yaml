@@ -1,0 +1,1558 @@
+openapi: 3.0.3
+
+info:
+  title: Lokabuy API
+  version: 1.0.0
+  description: >
+    RESTful API for the Lokabuy classified ads portal.
+    All endpoints are under `/api/v1`.
+    Every response uses the standard envelope:
+    `{ "success": boolean, "data": any, "error": string | null }`.
+
+servers:
+  - url: /api/v1
+    description: Version 1
+
+# ─── Security ─────────────────────────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Sanctum token obtained from POST /auth/login or /auth/register
+
+  # ─── Reusable Schemas ───────────────────────────────────────────────────────
+
+  schemas:
+
+    # Standard envelopes
+    SuccessEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data: {}
+        error: { type: string, nullable: true, example: null }
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        data: { nullable: true, example: null }
+        error: { type: string, example: "Unauthorized" }
+
+    ValidationErrorEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        data:
+          type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+              example:
+                title: ["The title field is required."]
+                price: ["The price must be a number."]
+        error: { type: string, example: "Validation failed" }
+
+    # Pagination
+    PaginationMeta:
+      type: object
+      properties:
+        current_page: { type: integer, example: 1 }
+        from:         { type: integer, example: 1 }
+        last_page:    { type: integer, example: 5 }
+        per_page:     { type: integer, example: 20 }
+        to:           { type: integer, example: 20 }
+        total:        { type: integer, example: 87 }
+
+    PaginationLinks:
+      type: object
+      properties:
+        first: { type: string, nullable: true }
+        last:  { type: string, nullable: true }
+        prev:  { type: string, nullable: true }
+        next:  { type: string, nullable: true }
+
+    # Resources
+    UserResource:
+      type: object
+      properties:
+        id:                  { type: integer, example: 1 }
+        name:                { type: string,  example: "Amit Sharma" }
+        email:               { type: string,  format: email, example: "amit@example.com" }
+        phone:               { type: string,  nullable: true, example: "+919876543210" }
+        avatar_url:          { type: string,  nullable: true, example: "http://lokabuy.test/storage/avatars/1.jpg" }
+        is_verified:         { type: boolean, example: false }
+        is_active:           { type: boolean, example: true }
+        role:                { type: string,  enum: [user, moderator, admin], example: "user" }
+        email_notifications: { type: boolean, example: true }
+        created_at:          { type: string,  format: date-time }
+
+    ListingImageResource:
+      type: object
+      properties:
+        id:    { type: integer, example: 12 }
+        url:   { type: string,  example: "http://lokabuy.test/storage/listings/7/photo.jpg" }
+        order: { type: integer, example: 0 }
+
+    SubcategoryResource:
+      type: object
+      properties:
+        id:          { type: integer, example: 3 }
+        name:        { type: string,  example: "Cars" }
+        slug:        { type: string,  example: "cars" }
+        sort_order:  { type: integer, example: 1 }
+        is_active:   { type: boolean, example: true }
+        category_id: { type: integer, example: 1 }
+
+    CategoryResource:
+      type: object
+      properties:
+        id:            { type: integer, example: 1 }
+        name:          { type: string,  example: "Vehicles" }
+        slug:          { type: string,  example: "vehicles" }
+        icon:          { type: string,  nullable: true, example: "car-front" }
+        sort_order:    { type: integer, example: 0 }
+        is_active:     { type: boolean, example: true }
+        subcategories:
+          type: array
+          items: { $ref: '#/components/schemas/SubcategoryResource' }
+
+    ListingResource:
+      type: object
+      properties:
+        id:              { type: integer, example: 42 }
+        title:           { type: string,  example: "Honda City 2020 — Single Owner" }
+        slug:            { type: string,  example: "honda-city-2020-abc123" }
+        description:     { type: string,  example: "Well maintained, full service history." }
+        price:           { type: string,  example: "450000.00" }
+        currency:        { type: string,  example: "INR" }
+        listing_type:    { type: string,  nullable: true, enum: [buy, sell, rent] }
+        location_city:   { type: string,  example: "Mumbai" }
+        location_state:  { type: string,  example: "Maharashtra" }
+        status:          { type: string,  enum: [active, sold, expired, deleted, inactive] }
+        approval_status: { type: string,  enum: [pending, approved, rejected] }
+        is_featured:     { type: boolean, example: false }
+        featured_until:  { type: string,  format: date-time, nullable: true }
+        view_count:      { type: integer, example: 134 }
+        expires_at:      { type: string,  format: date-time }
+        created_at:      { type: string,  format: date-time }
+        updated_at:      { type: string,  format: date-time }
+        user:
+          nullable: true
+          $ref: '#/components/schemas/UserResource'
+        category:
+          nullable: true
+          $ref: '#/components/schemas/CategoryResource'
+        subcategory:
+          nullable: true
+          $ref: '#/components/schemas/SubcategoryResource'
+        images:
+          type: array
+          items: { $ref: '#/components/schemas/ListingImageResource' }
+
+    FavoriteResource:
+      type: object
+      properties:
+        id:         { type: integer, example: 8 }
+        created_at: { type: string,  format: date-time }
+        listing:
+          $ref: '#/components/schemas/ListingResource'
+
+    ReportResource:
+      type: object
+      properties:
+        id:         { type: integer, example: 5 }
+        reason:     { type: string,  enum: [spam, fraud, prohibited, duplicate, other] }
+        status:     { type: string,  enum: [pending, actioned, dismissed] }
+        created_at: { type: string,  format: date-time }
+        listing:
+          $ref: '#/components/schemas/ListingResource'
+        reporter:
+          $ref: '#/components/schemas/UserResource'
+
+  # ─── Reusable Responses ─────────────────────────────────────────────────────
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            success: false
+            data: null
+            error: "Unauthorized"
+
+    Forbidden:
+      description: Authenticated but not permitted
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            success: false
+            data: null
+            error: "Forbidden"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            success: false
+            data: null
+            error: "Not found"
+
+    UnprocessableEntity:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationErrorEnvelope' }
+
+# ─── Paths ────────────────────────────────────────────────────────────────────
+
+paths:
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, password_confirmation]
+              properties:
+                name:                  { type: string, maxLength: 100, example: "Amit Sharma" }
+                email:                 { type: string, format: email, example: "amit@example.com" }
+                phone:                 { type: string, nullable: true, example: "+919876543210" }
+                password:              { type: string, minLength: 8, example: "secret123" }
+                password_confirmation: { type: string, example: "secret123" }
+      responses:
+        '201':
+          description: Registered successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:         { $ref: '#/components/schemas/UserResource' }
+                          access_token: { type: string }
+                          token_type:   { type: string, example: "Bearer" }
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                data: null
+                error: "Email already registered"
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive a token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email, example: "amit@example.com" }
+                password: { type: string, example: "secret123" }
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:          { $ref: '#/components/schemas/UserResource' }
+                          access_token:  { type: string }
+                          refresh_token: { type: string }
+                          token_type:    { type: string, example: "Bearer" }
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                data: null
+                error: "Invalid credentials"
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Invalidate the current token
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message: { type: string, example: "Logged out successfully." }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token using a refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          access_token:  { type: string }
+                          refresh_token: { type: string }
+                          token_type:    { type: string, example: "Bearer" }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Send a password reset link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200':
+          description: Reset link sent (response is the same whether email exists or not)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message: { type: string, example: "Password reset link sent." }
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password using the token from the reset email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token:                 { type: string }
+                email:                 { type: string, format: email }
+                password:              { type: string, minLength: 8 }
+                password_confirmation: { type: string }
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message: { type: string, example: "Password reset successfully." }
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ── Profile ───────────────────────────────────────────────────────────────
+
+  /profile:
+    get:
+      tags: [Profile]
+      summary: Get the authenticated user's profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags: [Profile]
+      summary: Update the authenticated user's profile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:                { type: string, maxLength: 100 }
+                email:               { type: string, format: email }
+                phone:               { type: string, nullable: true }
+                email_notifications: { type: boolean }
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /profile/avatar:
+    post:
+      tags: [Profile]
+      summary: Upload a new avatar image
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [avatar]
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, or WebP — max 2 MB
+      responses:
+        '200':
+          description: Avatar uploaded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ── Dashboard ─────────────────────────────────────────────────────────────
+
+  /my/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Get the authenticated user's dashboard stats
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          active_listings:  { type: integer, example: 3 }
+                          sold_listings:    { type: integer, example: 7 }
+                          total_views:      { type: integer, example: 412 }
+                          unread_messages:  { type: integer, example: 0 }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /my/listings:
+    get:
+      tags: [Dashboard]
+      summary: Get all listings owned by the authenticated user (paginated)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: User's listings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          data:  { type: array, items: { $ref: '#/components/schemas/ListingResource' } }
+                          meta:  { $ref: '#/components/schemas/PaginationMeta' }
+                          links: { $ref: '#/components/schemas/PaginationLinks' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Categories ────────────────────────────────────────────────────────────
+
+  /categories:
+    get:
+      tags: [Categories]
+      summary: List all active categories with their subcategories
+      responses:
+        '200':
+          description: Category list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CategoryResource' }
+
+  /categories/{category}:
+    get:
+      tags: [Categories]
+      summary: Get a single category by slug or ID
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema: { type: string }
+          description: Category slug or ID
+      responses:
+        '200':
+          description: Category detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CategoryResource' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Listings (public) ─────────────────────────────────────────────────────
+
+  /listings:
+    get:
+      tags: [Listings]
+      summary: Search and browse listings
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Keyword search (FULLTEXT on title and description)
+        - name: category
+          in: query
+          schema: { type: string }
+          description: Category slug
+        - name: subcategory
+          in: query
+          schema: { type: string }
+          description: Subcategory slug
+        - name: city
+          in: query
+          schema: { type: string }
+        - name: state
+          in: query
+          schema: { type: string }
+        - name: min_price
+          in: query
+          schema: { type: number }
+        - name: max_price
+          in: query
+          schema: { type: number }
+        - name: listing_type
+          in: query
+          schema: { type: string, enum: [buy, sell, rent] }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [newest, oldest, price_asc, price_desc], default: newest }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: Paginated listing results. Featured listings always appear first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          data:  { type: array, items: { $ref: '#/components/schemas/ListingResource' } }
+                          meta:  { $ref: '#/components/schemas/PaginationMeta' }
+                          links: { $ref: '#/components/schemas/PaginationLinks' }
+
+    post:
+      tags: [Listings]
+      summary: Create a new listing
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, description, price, category_id, location_city, location_state]
+              properties:
+                title:          { type: string, minLength: 3, maxLength: 100 }
+                description:    { type: string, minLength: 20, maxLength: 4000 }
+                price:          { type: number, minimum: 0 }
+                category_id:    { type: integer }
+                subcategory_id: { type: integer, nullable: true }
+                listing_type:   { type: string, nullable: true, enum: [buy, sell, rent] }
+                location_city:  { type: string, maxLength: 100 }
+                location_state: { type: string, maxLength: 100 }
+      responses:
+        '201':
+          description: Listing created (approval_status=pending, status=inactive)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ListingResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /listings/autocomplete:
+    get:
+      tags: [Listings]
+      summary: Return up to 10 listing title suggestions for a query
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+      responses:
+        '200':
+          description: Autocomplete suggestions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            title: { type: string }
+                            slug:  { type: string }
+
+  /listings/{listing}:
+    get:
+      tags: [Listings]
+      summary: Get a listing by slug
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: string }
+          description: Listing slug
+      responses:
+        '200':
+          description: Listing detail. Increments view_count.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ListingResource' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Listings]
+      summary: Update a listing (owner only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: string }
+          description: Listing slug
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:          { type: string, minLength: 3, maxLength: 100 }
+                description:    { type: string, minLength: 20, maxLength: 4000 }
+                price:          { type: number, minimum: 0 }
+                category_id:    { type: integer }
+                subcategory_id: { type: integer, nullable: true }
+                listing_type:   { type: string, nullable: true, enum: [buy, sell, rent] }
+                location_city:  { type: string, maxLength: 100 }
+                location_state: { type: string, maxLength: 100 }
+      responses:
+        '200':
+          description: Listing updated (reset to pending/inactive for re-approval)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ListingResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      tags: [Listings]
+      summary: Delete a listing (owner only — soft delete)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: string }
+          description: Listing slug
+      responses:
+        '204':
+          description: Listing deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /listings/{listing}/sold:
+    patch:
+      tags: [Listings]
+      summary: Mark a listing as sold (owner only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: string }
+          description: Listing slug
+      responses:
+        '200':
+          description: Listing marked as sold
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ListingResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /listings/{listing}/renew:
+    patch:
+      tags: [Listings]
+      summary: Renew an expired listing (owner only) — resets expires_at to +60 days
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: string }
+          description: Listing slug
+      responses:
+        '200':
+          description: Listing renewed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ListingResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Listing Images ────────────────────────────────────────────────────────
+
+  /listings/{listing}/images:
+    post:
+      tags: [Listing Images]
+      summary: Upload an image for a listing (owner only, max 10 images)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Listing ID
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, or WebP — max 5 MB
+      responses:
+        '201':
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ListingImageResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: Validation failed or image limit reached
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationErrorEnvelope' }
+
+  /listings/{listing}/images/{image}:
+    delete:
+      tags: [Listing Images]
+      summary: Delete a listing image (owner only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Listing ID
+        - name: image
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Image ID
+      responses:
+        '204':
+          description: Image deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Favorites ─────────────────────────────────────────────────────────────
+
+  /favorites:
+    get:
+      tags: [Favorites]
+      summary: List the authenticated user's favorited listings
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: Favorites list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          data:  { type: array, items: { $ref: '#/components/schemas/FavoriteResource' } }
+                          meta:  { $ref: '#/components/schemas/PaginationMeta' }
+                          links: { $ref: '#/components/schemas/PaginationLinks' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /favorites/{listing}:
+    post:
+      tags: [Favorites]
+      summary: Toggle a listing as favorite (adds if not saved, removes if already saved)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Listing ID
+      responses:
+        '200':
+          description: Favorite toggled
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          favorited: { type: boolean, example: true }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Reports ───────────────────────────────────────────────────────────────
+
+  /listings/{listing}/report:
+    post:
+      tags: [Reports]
+      summary: Report a listing (authenticated users only, cannot report own listing)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Listing ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  enum: [spam, fraud, prohibited, duplicate, other]
+      responses:
+        '201':
+          description: Report submitted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ReportResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Cannot report own listing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: Already reported this listing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                data: null
+                error: "You have already reported this listing."
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ── Admin — Dashboard ─────────────────────────────────────────────────────
+
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Admin dashboard stats
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          total_users:          { type: integer, example: 1240 }
+                          active_listings:      { type: integer, example: 342 }
+                          pending_listings:     { type: integer, example: 14 }
+                          pending_reports:      { type: integer, example: 5 }
+                          new_users_last_7days: { type: integer, example: 38 }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Admin — Listings ──────────────────────────────────────────────────────
+
+  /admin/listings/pending:
+    get:
+      tags: [Admin]
+      summary: List all pending listings awaiting approval
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: Pending listings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          data:  { type: array, items: { $ref: '#/components/schemas/ListingResource' } }
+                          meta:  { $ref: '#/components/schemas/PaginationMeta' }
+                          links: { $ref: '#/components/schemas/PaginationLinks' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/listings/{listing}/approve:
+    patch:
+      tags: [Admin]
+      summary: Approve a pending listing
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Listing ID
+      responses:
+        '200':
+          description: Listing approved — email sent to owner
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ListingResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/listings/{listing}/reject:
+    patch:
+      tags: [Admin]
+      summary: Reject a pending listing with a reason
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Listing ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Listing rejected — email with reason sent to owner
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ListingResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /admin/listings/{listing}/feature:
+    patch:
+      tags: [Admin]
+      summary: Set or remove featured status on a listing
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: listing
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Listing ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_featured]
+              properties:
+                is_featured:    { type: boolean }
+                featured_until: { type: string, format: date-time, nullable: true }
+      responses:
+        '200':
+          description: Featured status updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ListingResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Admin — Reports ───────────────────────────────────────────────────────
+
+  /admin/reports:
+    get:
+      tags: [Admin]
+      summary: List all pending reports
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: Pending reports
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          data:  { type: array, items: { $ref: '#/components/schemas/ReportResource' } }
+                          meta:  { $ref: '#/components/schemas/PaginationMeta' }
+                          links: { $ref: '#/components/schemas/PaginationLinks' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reports/{report}/action:
+    patch:
+      tags: [Admin]
+      summary: Remove the reported listing and mark all its pending reports as actioned
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: report
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Report ID
+      responses:
+        '200':
+          description: Listing removed — email sent to owner
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message: { type: string, example: "Listing removed and report resolved." }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/reports/{report}/dismiss:
+    patch:
+      tags: [Admin]
+      summary: Dismiss a report without modifying the listing
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: report
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Report ID
+      responses:
+        '200':
+          description: Report dismissed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message: { type: string, example: "Report dismissed." }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Admin — Users ─────────────────────────────────────────────────────────
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all users (paginated at 50)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+          description: Filter by name (partial match)
+        - name: email
+          in: query
+          schema: { type: string }
+          description: Filter by email (partial match)
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          data:  { type: array, items: { $ref: '#/components/schemas/UserResource' } }
+                          meta:  { $ref: '#/components/schemas/PaginationMeta' }
+                          links: { $ref: '#/components/schemas/PaginationLinks' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/users/{user}/deactivate:
+    patch:
+      tags: [Admin]
+      summary: Deactivate a user account and revoke all their tokens
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: user
+          in: path
+          required: true
+          schema: { type: integer }
+          description: User ID
+      responses:
+        '200':
+          description: User deactivated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Admin — Categories ────────────────────────────────────────────────────
+
+  /admin/categories:
+    get:
+      tags: [Admin]
+      summary: List all categories with subcategory count and active listing count
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Category list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/CategoryResource'
+                            - type: object
+                              properties:
+                                subcategories_count: { type: integer, example: 5 }
+                                listings_count:      { type: integer, example: 87 }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Admin]
+      summary: Create a new category
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:       { type: string, maxLength: 100 }
+                slug:       { type: string, nullable: true, description: "Auto-generated from name if omitted" }
+                icon:       { type: string, nullable: true, description: "Bootstrap Icon name (e.g. car-front)" }
+                sort_order: { type: integer, default: 0 }
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CategoryResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /admin/categories/{category}:
+    put:
+      tags: [Admin]
+      summary: Update a category
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Category ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:       { type: string, maxLength: 100 }
+                slug:       { type: string, nullable: true }
+                icon:       { type: string, nullable: true }
+                sort_order: { type: integer }
+                is_active:  { type: boolean }
+      responses:
+        '200':
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CategoryResource' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+# ─── Tags ─────────────────────────────────────────────────────────────────────
+
+tags:
+  - name: Auth
+    description: Registration, login, logout, token refresh, password reset
+  - name: Profile
+    description: Authenticated user profile and avatar
+  - name: Dashboard
+    description: Authenticated user dashboard stats and listing management
+  - name: Categories
+    description: Public category and subcategory browsing
+  - name: Listings
+    description: Public listing search, detail, and authenticated CRUD
+  - name: Listing Images
+    description: Upload and delete listing images
+  - name: Favorites
+    description: Save and manage favorited listings
+  - name: Reports
+    description: Report a listing for moderation review
+  - name: Admin
+    description: Admin-only endpoints — requires role admin or moderator
