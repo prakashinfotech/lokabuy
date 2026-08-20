@@ -270,6 +270,11 @@ All PHP files must begin with `declare(strict_types=1)`.
 
 ---
 
+## Project Policies
+
+- [Contributing Guide](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
