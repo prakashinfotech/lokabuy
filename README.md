@@ -1,5 +1,7 @@
 # Lokabuy
 
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 A fully functional classified ads web portal. Built as a **Laravel 8 + Blade monolith** with a versioned REST API, user authentication, listing management, admin moderation, email notifications, and Redis caching.
 
 ---
@@ -267,3 +269,7 @@ To check without making changes:
 All PHP files must begin with `declare(strict_types=1)`.
 
 ---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
