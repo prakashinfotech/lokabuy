@@ -9,6 +9,9 @@ use App\Http\Requests\User\UpdateAvatarRequest;
 use App\Http\Requests\User\UpdateProfileRequest;
 use App\Services\ImageService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 
 class ProfileController extends Controller
@@ -25,6 +28,20 @@ class ProfileController extends Controller
         $request->user()->update($request->validated());
 
         return back()->with('success', 'Profile updated successfully.');
+    }
+
+    public function updatePassword(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'current_password' => ['required', 'current_password'],
+            'password' => ['required', 'string', 'confirmed', 'different:current_password', Password::min(10)->mixedCase()->numbers()->symbols()],
+        ]);
+
+        $request->user()->forceFill([
+            'password' => Hash::make($validated['password']),
+        ])->save();
+
+        return back()->with('password_success', 'Password changed successfully.');
     }
 
     public function uploadAvatar(UpdateAvatarRequest $request): RedirectResponse

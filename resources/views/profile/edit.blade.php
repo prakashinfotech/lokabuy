@@ -108,10 +108,46 @@
             <div class="card border-0 shadow-sm rounded-3">
                 <div class="card-body p-4">
                     <h6 class="fw-bold mb-1">Password</h6>
-                    <p class="text-muted small mb-3">To change your password, use the forgot password flow.</p>
-                    <a href="{{ route('password.request') }}" class="btn btn-outline-secondary btn-sm">
-                        <i class="bi bi-lock me-1"></i>Change Password
-                    </a>
+                    <p class="text-muted small mb-3">Enter your current password and choose a new password with at least 10 characters, uppercase and lowercase letters, a number, and a symbol.</p>
+
+                    @if(session('password_success'))
+                        <div class="alert alert-success py-2 small">{{ session('password_success') }}</div>
+                    @endif
+
+                    <form method="POST" action="{{ route('profile.password.update') }}">
+                        @csrf
+                        @method('PUT')
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small" for="current_password">Current Password</label>
+                            <input type="password" id="current_password" name="current_password"
+                                   class="form-control @error('current_password') is-invalid @enderror"
+                                   autocomplete="current-password" required>
+                            @error('current_password')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small" for="password">New Password</label>
+                            <input type="password" id="password" name="password"
+                                   class="form-control @error('password') is-invalid @enderror"
+                                   autocomplete="new-password" minlength="10" required>
+                            @error('password')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small" for="password_confirmation">Confirm New Password</label>
+                            <input type="password" id="password_confirmation" name="password_confirmation"
+                                   class="form-control" autocomplete="new-password" minlength="10" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-lock me-1"></i>Change Password
+                        </button>
+                    </form>
                 </div>
             </div>
 
