@@ -69,6 +69,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->role === 'admin';
     }
 
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->isAdmin() || $this->email_verified_at !== null;
+    }
+
     public function isModerator(): bool
     {
         return in_array($this->role, ['admin', 'moderator'], true);

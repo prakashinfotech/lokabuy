@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Log;
 
 class ForgotPasswordController extends Controller
 {
@@ -15,7 +16,18 @@ class ForgotPasswordController extends Controller
     {
         $request->validate(['email' => ['required', 'email']]);
 
-        $status = Password::sendResetLink(['email' => $request->email]);
+        try {
+            $status = Password::sendResetLink(['email' => $request->email]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send password reset email', [
+                'email' => $request->email,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()
+                ->withErrors(['email' => 'Unable to send a password reset email right now. Please try again later.'])
+                ->withInput();
+        }
 
         return $status === Password::RESET_LINK_SENT
             ? back()->with('status', __($status))

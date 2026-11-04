@@ -10,13 +10,27 @@ use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 
 class PasswordResetController extends Controller
 {
     public function forgot(ForgotPasswordRequest $request): JsonResponse
     {
-        $status = Password::sendResetLink(['email' => $request->email]);
+        try {
+            $status = Password::sendResetLink(['email' => $request->email]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send password reset email', [
+                'email' => $request->email,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'data' => null,
+                'error' => 'Unable to send a password reset email right now. Please try again later.',
+            ], 500);
+        }
 
         if ($status !== Password::RESET_LINK_SENT) {
             return response()->json([
