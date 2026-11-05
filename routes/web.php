@@ -73,10 +73,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     // Listings — write (create requires verified email)
-    Route::middleware('verified')->group(function () {
+    // Route::middleware('verified')->group(function () {
         Route::get('/sell', [ListingController::class, 'create'])->name('listings.create');
         Route::post('/sell', [ListingController::class, 'store'])->name('listings.store');
-    });
+    // });
     Route::get('/listings/{listing:slug}/edit', [ListingController::class, 'edit'])->name('listings.edit');
     Route::put('/listings/{listing:slug}', [ListingController::class, 'update'])->name('listings.update');
     Route::delete('/listings/{listing:slug}', [ListingController::class, 'destroy'])->name('listings.destroy');
